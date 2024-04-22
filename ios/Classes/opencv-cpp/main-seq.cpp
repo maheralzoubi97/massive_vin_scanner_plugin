@@ -1,31 +1,45 @@
+#include <opencv2/core.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/imgcodecs.hpp>
+#if defined(MASSIVE_VIN_SCANNER_IOS)
+#include "ncnn/ncnn/layer.h"
+#include "ncnn/ncnn/net.h"
+#else
+#include "layer.h"
 #include "net.h"
-
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
-
 #include <stdlib.h>
-#include <float.h>
-#include <stdio.h>
-#include <vector>
-#include <float.h>
-#include <stdio.h>
-#include <string.h>
+#endif
+
+#if defined(USE_NCNN_SIMPLEOCV)
+#if defined(MASSIVE_VIN_SCANNER_IOS)
+#include "ncnn/ncnn/simpleocv.h"
+#else
+#include "simpleocv.h"
 #include "benchmark.h"
 #include "cpu.h"
 #include "datareader.h"
 #include "net.h"
 #include "gpu.h"
+#endif
+#else
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/opencv.hpp>
+#endif
 
 
 
+#include <float.h>
+#include <stdio.h>
+#include <vector>
+#include <string.h>
 #include <iostream>
 #include <iomanip>
 #include <unistd.h>
 #include <limits.h>
 #include <cstring>
 #include <cerrno>
-#include <opencv2/opencv.hpp>
 
 #include <cmath> // Include for std::round
 
@@ -525,7 +539,7 @@ int detect_yolov8(cv::Mat& bgr, std::vector<Object>& objects)
     int width = bgr.cols;
     int height = bgr.rows;
 
-    const int target_size = 640;
+    const int target_size = 320;
     const float prob_threshold = 0.4f;   //  0.4f
     const float nms_threshold = 0.5f;      //0.5f
 
@@ -811,6 +825,47 @@ std::vector<int32_t> getCombinedObjectResults(const std::vector<Object>& objects
 
 
 
+template<typename T>
+T clamp(T val, T minVal, T maxVal) {
+    return (val < minVal) ? minVal : (val > maxVal) ? maxVal : val;
+}
+// Convert YUV420 to RGB image
+void convertYUV420ToImage(int width, int height, const std::vector<uint8_t>& bytes, int bytesPerRow, cv::Mat& rgbaImage) {
+    rgbaImage.create(height, width, CV_8UC4); // Create an image with 4 channels
+    int uvRowStride = bytesPerRow / 2;
+
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            int yIndex = y * bytesPerRow + x;
+            int uvIndex = (y / 2) * uvRowStride + (x / 2);
+            uint8_t Y = bytes[yIndex];
+            uint8_t U = bytes[uvIndex];
+            uint8_t V = bytes[uvIndex + 1];
+
+            int R = clamp(int(Y + (V * 1436 / 1024 - 179)), 0, 255);
+            int G = clamp(int(Y - (U * 46549 / 131072 + 44 - V * 93604 / 131072 + 91)), 0, 255);
+            int B = clamp(int(Y + (U * 1814 / 1024 - 227)), 0, 255);
+            int A = 255;  // Alpha channel set to full opacity
+
+            rgbaImage.at<cv::Vec4b>(y, x) = cv::Vec4b(B, G, R, A);
+        }
+    }
+}
+ extern "C" __attribute__((visibility("default"))) __attribute__((used)) void image_ffi_yuv24(unsigned char* buf, int size,int width,int height, int* segBoundary, int* segBoundarySize) {
+    int bytesPerRow = width; // Assuming the row stride equals the width
+    cv::Mat rgbImage;
+    std::vector<uint8_t> bytes(buf, buf + size); // Assuming size is correctly computed for the YUV data
+    convertYUV420ToImage(width, height, bytes, bytesPerRow, rgbImage);
+    std::vector<Object> objects;
+    detect_yolov8(rgbImage, objects);
+    std::vector<int32_t> results = getCombinedObjectResults(objects, rgbImage.cols, rgbImage.rows);
+    size_t resultsSize = results.size()*sizeof(int32_t);
+    if (resultsSize > size) {
+        return;
+    }
+    memcpy(segBoundary, results.data(), resultsSize);
+    *segBoundarySize = results.size() ;
+}
 
 
 

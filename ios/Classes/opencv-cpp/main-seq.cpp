@@ -302,9 +302,12 @@ struct Object
     cv::Rect_<float> rect;
     int label;
     float prob;
+    std::vector<int> labels;
+    std::vector<float> probs;
     cv::Mat mask;
     std::vector<float> mask_feat;
 };
+
 struct GridAndStride
 {
     int grid0;

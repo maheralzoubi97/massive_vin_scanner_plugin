@@ -139,6 +139,68 @@ processImageYuv24RealTime(Map<String, dynamic> data) {
   }
 }
 
+void processImageBgra8888RealTime(Map<String, dynamic> data) {
+  final port = data['send_port'] as SendPort;
+  final cameraImage =
+      data['cameraImage'] as CameraImage; // Ensure this handles BGRA8888 data
+  final index = data['index'];
+  final isolateTimeStamp = data['isolateTimeStamp'];
+
+  final s = cameraImage.planes[0].bytes.length;
+  final p = malloc.allocate<Uint8>(4 * cameraImage.height * cameraImage.width);
+  p.asTypedList(s).setRange(0, s, cameraImage.planes[0].bytes);
+  final segBoundary =
+      malloc.allocate<Int32>(cameraImage.height * cameraImage.width);
+  final segBoundarySize = malloc.allocate<Int32>(1);
+  final jpegBuf = malloc.allocate<Pointer<Uint8>>(1);
+  final jpegSize = malloc.allocate<Int32>(1);
+
+  // Lookup the FFI function for BGRA8888 image processing
+  final imageFfi = dylib.lookupFunction<
+      Void Function(Pointer<Uint8>, Int32, Int32, Int32, Pointer<Int32>,
+          Pointer<Int32>, Pointer<Pointer<Uint8>>, Pointer<Int32>),
+      void Function(
+          Pointer<Uint8>,
+          int,
+          int,
+          int,
+          Pointer<Int32>,
+          Pointer<Int32>,
+          Pointer<Pointer<Uint8>>,
+          Pointer<Int32>)>('image_ffi_bgra8888');
+
+  try {
+    imageFfi(
+      p,
+      s,
+      cameraImage.width,
+      cameraImage.height,
+      segBoundary,
+      segBoundarySize,
+      jpegBuf,
+      jpegSize,
+    );
+    final imageBytes = jpegBuf.value.asTypedList(jpegSize.value);
+
+    final result2 = segBoundary
+        .asTypedList(segBoundarySize.value); // Return segment boundaries
+
+    port.send({
+      "result": result2,
+      "index": index,
+      "isolateTimeStamp": isolateTimeStamp,
+      "image": imageBytes
+    });
+  } finally {
+    malloc.free(p);
+    malloc.free(segBoundary);
+    malloc.free(segBoundarySize);
+    malloc.free(jpegBuf.value);
+    malloc.free(jpegBuf);
+    malloc.free(jpegSize);
+  }
+}
+
 processImageWithWorker(SendPort port, CameraImage cameraImage, int index) {
   int s = cameraImage.planes[0].bytes.length;
 

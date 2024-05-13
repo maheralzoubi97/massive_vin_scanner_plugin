@@ -539,7 +539,7 @@ int detect_yolov8(cv::Mat& bgr, std::vector<Object>& objects)
     int width = bgr.cols;
     int height = bgr.rows;
 
-    const int target_size = 320;
+    const int target_size = 640;
     const float prob_threshold = 0.4f;   //  0.4f
     const float nms_threshold = 0.5f;      //0.5f
 
@@ -873,6 +873,11 @@ void convertYUV420ToImage(int width, int height, const std::vector<uint8_t>& byt
 void image_ffi(unsigned char* buf,  int size , int* segBoundary , int* segBoundarySize ) { 
     std::vector<uchar> v(buf, buf + size);
     cv::Mat receivedImage = cv::imdecode(cv::Mat(v), cv::IMREAD_COLOR);
+
+    // Check if the image is in portrait mode and rotate it to landscape
+    if (receivedImage.rows < receivedImage.cols) {
+        cv::rotate(receivedImage, receivedImage, cv::ROTATE_90_CLOCKWISE);
+    }
      
     std::vector<Object> objects;
     std::vector<uchar> retv;
@@ -910,7 +915,42 @@ void image_ffi_path(char *path, int* objectCnt) {
     imwrite(path, recievedImage);
    
 }
+// Function to convert BGRA8888 to BGR using OpenCV
+void ConvertBGRA8888toBGR(const cv::Mat& bgraImage, cv::Mat& bgrImage) {
+    if (bgraImage.type() != CV_8UC4) {
+        std::cerr << "Invalid input image format: Expected CV_8UC4 (BGRA8888)" << std::endl;
+        return;
+    }
+    cv::cvtColor(bgraImage, bgrImage, cv::COLOR_BGRA2BGR);
+}
 
+extern "C" __attribute__((visibility("default"))) __attribute__((used))
+void image_ffi_bgra8888(unsigned char* buf, int size, int width, int height, int* segBoundary, int* segBoundarySize) {
+    // Create an OpenCV mat that references the BGRA8888 data
+    cv::Mat bgraImage(height, width, CV_8UC4, buf);
+    cv::Mat bgrImage;
+
+    // Convert from BGRA8888 to BGR
+    ConvertBGRA8888toBGR(bgraImage, bgrImage);
+
+    // Process the BGR image using your object detection function
+    std::vector<Object> objects;
+    detect_yolov8(bgrImage, objects);
+
+    // Get the combined results from the detected objects
+    std::vector<int32_t> results = getCombinedObjectResults(objects, bgrImage.cols, bgrImage.rows);
+    size_t resultsSize = results.size() * sizeof(int32_t);
+
+    // Ensure the output buffer is large enough
+    if (resultsSize > static_cast<size_t>(size)) {
+        *segBoundarySize = 0; // Not enough space to store results
+        return;
+    }
+
+    // Copy the results to the provided buffer
+    memcpy(segBoundary, results.data(), resultsSize);
+    *segBoundarySize = results.size(); // Update the number of elements in the output array
+}
 
 
 

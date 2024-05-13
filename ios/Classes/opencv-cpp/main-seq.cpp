@@ -880,6 +880,10 @@ void convertYUV420ToImage(int width, int height, const std::vector<uint8_t>& byt
 void image_ffi(unsigned char* buf,  int size , int* segBoundary , int* segBoundarySize ) { 
     std::vector<uchar> v(buf, buf + size);
     cv::Mat receivedImage = cv::imdecode(cv::Mat(v), cv::IMREAD_COLOR);
+    // Check if the image is in portrait mode and rotate it to landscape
+    if (receivedImage.rows < receivedImage.cols) {
+        cv::rotate(receivedImage, receivedImage, cv::ROTATE_90_CLOCKWISE);
+    }
      
     std::vector<Object> objects;
     std::vector<uchar> retv;

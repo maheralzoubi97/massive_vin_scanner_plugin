@@ -546,7 +546,7 @@ int detect_yolov8(cv::Mat& bgr, std::vector<Object>& objects)
     int width = bgr.cols;
     int height = bgr.rows;
 
-    const int target_size = 320;
+    const int target_size = 640;
     const float prob_threshold = 0.4f;   //  0.4f
     const float nms_threshold = 0.5f;      //0.5f
 
@@ -827,56 +827,6 @@ std::vector<int32_t> getCombinedObjectResults(const std::vector<Object>& objects
 
     return combinedResults;
 }
-
-
-
-
-
-template<typename T>
-T clamp(T val, T minVal, T maxVal) {
-    return (val < minVal) ? minVal : (val > maxVal) ? maxVal : val;
-}
-// Convert YUV420 to RGB image
-void convertYUV420ToImage(int width, int height, const std::vector<uint8_t>& bytes, int bytesPerRow, cv::Mat& rgbaImage) {
-    rgbaImage.create(height, width, CV_8UC4); // Create an image with 4 channels
-    int uvRowStride = bytesPerRow / 2;
-
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            int yIndex = y * bytesPerRow + x;
-            int uvIndex = (y / 2) * uvRowStride + (x / 2);
-            uint8_t Y = bytes[yIndex];
-            uint8_t U = bytes[uvIndex];
-            uint8_t V = bytes[uvIndex + 1];
-
-            int R = clamp(int(Y + (V * 1436 / 1024 - 179)), 0, 255);
-            int G = clamp(int(Y - (U * 46549 / 131072 + 44 - V * 93604 / 131072 + 91)), 0, 255);
-            int B = clamp(int(Y + (U * 1814 / 1024 - 227)), 0, 255);
-            int A = 255;  // Alpha channel set to full opacity
-
-            rgbaImage.at<cv::Vec4b>(y, x) = cv::Vec4b(B, G, R, A);
-        }
-    }
-}
- extern "C" __attribute__((visibility("default"))) __attribute__((used)) void image_ffi_yuv24(unsigned char* buf, int size,int width,int height, int* segBoundary, int* segBoundarySize) {
-    int bytesPerRow = width; // Assuming the row stride equals the width
-    cv::Mat rgbImage;
-    std::vector<uint8_t> bytes(buf, buf + size); // Assuming size is correctly computed for the YUV data
-    convertYUV420ToImage(width, height, bytes, bytesPerRow, rgbImage);
-    std::vector<Object> objects;
-    detect_yolov8(rgbImage, objects);
-    std::vector<int32_t> results = getCombinedObjectResults(objects, rgbImage.cols, rgbImage.rows);
-    size_t resultsSize = results.size()*sizeof(int32_t);
-    if (resultsSize > size) {
-        return;
-    }
-    memcpy(segBoundary, results.data(), resultsSize);
-    *segBoundarySize = results.size() ;
-}
-
-
-
-
 void image_ffi(unsigned char* buf,  int size , int* segBoundary , int* segBoundarySize ) { 
     std::vector<uchar> v(buf, buf + size);
     cv::Mat receivedImage = cv::imdecode(cv::Mat(v), cv::IMREAD_COLOR);
@@ -920,6 +870,42 @@ void image_ffi_path(char *path, int* objectCnt) {
     std::vector <uchar> retv1;
     imwrite(path, recievedImage);
    
+}
+
+void ConvertBGRA8888toBGR(const cv::Mat& bgraImage, cv::Mat& bgrImage) {
+    if (bgraImage.type() != CV_8UC4) {
+        std::cerr << "Invalid input image format: Expected CV_8UC4 (BGRA8888)" << std::endl;
+        return;
+    }
+    cv::cvtColor(bgraImage, bgrImage, cv::COLOR_BGRA2BGR);
+}
+extern "C" __attribute__((visibility("default"))) __attribute__((used))
+void image_ffi_bgra8888(unsigned char* buf, int size, int width, int height, int* segBoundary, int* segBoundarySize, unsigned char** jpegBuf, int* jpegSize) {
+    // Create an OpenCV mat that references the BGRA8888 data
+    cv::Mat bgraImage(height, width, CV_8UC4, buf);
+    cv::Mat bgrImage;
+    // Convert from BGRA8888 to BGR
+    ConvertBGRA8888toBGR(bgraImage, bgrImage);
+    // Encoding the BGR image to JPEG
+    std::vector<unsigned char> jpegBuffer;
+    cv::imencode(".bmp", bgrImage, jpegBuffer);
+    // Allocate memory for the JPEG buffer to be passed back
+    *jpegBuf = (unsigned char*)malloc(jpegBuffer.size());
+    memcpy(*jpegBuf, jpegBuffer.data(), jpegBuffer.size());
+    *jpegSize = static_cast<int>(jpegBuffer.size());
+
+    std::vector<Object> objects;
+    detect_yolov8(bgrImage, objects);
+    std::vector<int32_t> results = getCombinedObjectResults(objects, bgrImage.cols, bgrImage.rows);
+    size_t resultsSize = results.size() * sizeof(int32_t);
+    // Ensure the output buffer is large enough
+    if (resultsSize > static_cast<size_t>(size)) {
+        *segBoundarySize = 0; // Not enough space to store results
+        return;
+    }
+    // Copy the results to the provided buffer
+    memcpy(segBoundary, results.data(), resultsSize);
+    *segBoundarySize = static_cast<int>(results.size()); // Update the number of elements in the output array
 }
 
 

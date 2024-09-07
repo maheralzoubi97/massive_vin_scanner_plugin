@@ -302,9 +302,12 @@ struct Object
     cv::Rect_<float> rect;
     int label;
     float prob;
+    std::vector<int> labels;
+    std::vector<float> probs;
     cv::Mat mask;
     std::vector<float> mask_feat;
 };
+
 struct GridAndStride
 {
     int grid0;
@@ -408,88 +411,92 @@ inline float sigmoid(float x)
 {
     return 1.0f / (1.0f + fast_exp(-x));
 }
-static void generate_proposals(std::vector<GridAndStride> grid_strides, const ncnn::Mat& pred, float prob_threshold, std::vector<Object>& objects)
-{
+
+
+static void generate_proposals(std::vector<GridAndStride> grid_strides, const ncnn::Mat& pred, float prob_threshold, std::vector<Object>& objects) {
     const int num_points = grid_strides.size();
-  
     const int num_class = 34;
     const int reg_max_1 = 16;
+    const int top_k = 5;  
 
-    for (int i = 0; i < num_points; i++)
-    {
-            const float* scores = pred.row(i) + 4 * reg_max_1;
+    ncnn::Layer* softmax = ncnn::create_layer("Softmax");
+    ncnn::ParamDict pd;
+    pd.set(0, 1);  
+    pd.set(1, 1); 
+    softmax->load_param(pd);
 
-      
-            int label = -1;
-            float score = -FLT_MAX;
-            for (int k = 0; k < num_class; k++)
-            {
-                float confidence = scores[k];
-                if (confidence > score)
-                {
-                    label = k;
-                    score = confidence;
+    ncnn::Option opt;
+    opt.num_threads = 1;
+    opt.use_packing_layout = false;
+
+    softmax->create_pipeline(opt);
+
+    for (int i = 0; i < num_points; i++) {
+        const float* scores = pred.row(i) + 4 * reg_max_1;
+        std::vector<std::pair<int, float>> class_scores;
+
+        for (int k = 0; k < num_class; k++) {
+            float confidence = scores[k];
+            class_scores.emplace_back(k, confidence);
+        }
+
+        
+        std::sort(class_scores.begin(), class_scores.end(), [](const std::pair<int, float>& a, const std::pair<int, float>& b) {
+            return a.second > b.second;
+        });
+
+        float box_prob = sigmoid(class_scores[0].second);
+        if (box_prob >= prob_threshold) {
+            ncnn::Mat bbox_pred(reg_max_1, 4, (void*)pred.row(i));
+            softmax->forward_inplace(bbox_pred, opt);
+
+            float pred_ltrb[4];
+            for (int k = 0; k < 4; k++) {
+                float dis = 0.f;
+                const float* dis_after_sm = bbox_pred.row(k);
+                for (int l = 0; l < reg_max_1; l++) {
+                    dis += l * dis_after_sm[l];
                 }
+                pred_ltrb[k] = dis * grid_strides[i].stride;
             }
-            float box_prob = sigmoid(score);
-            if (box_prob >= prob_threshold)
-            {
-                ncnn::Mat bbox_pred(reg_max_1, 4, (void*)pred.row(i));
-                {
-                    ncnn::Layer* softmax = ncnn::create_layer("Softmax");
 
-                    ncnn::ParamDict pd;
-                    pd.set(0, 1);
-                    pd.set(1, 1);
-                    softmax->load_param(pd);
+            float pb_cx = (grid_strides[i].grid0 + 0.5f) * grid_strides[i].stride;
+            float pb_cy = (grid_strides[i].grid1 + 0.5f) * grid_strides[i].stride;
 
-                    ncnn::Option opt;
-                    opt.num_threads = 1;
-                    opt.use_packing_layout = false;
+            float x0 = pb_cx - pred_ltrb[0];
+            float y0 = pb_cy - pred_ltrb[1];
+            float x1 = pb_cx + pred_ltrb[2];
+            float y1 = pb_cy + pred_ltrb[3];
 
-                    softmax->create_pipeline(opt);
+            Object obj;
+            obj.rect.x = x0;
+            obj.rect.y = y0;
+            obj.rect.width = x1 - x0;
+            obj.rect.height = y1 - y0;
+            obj.prob = box_prob;
+            obj.mask_feat.resize(32);
+            std::copy(pred.row(i) + 64 + num_class, pred.row(i) + 64 + num_class + 32, obj.mask_feat.begin());
 
-                    softmax->forward_inplace(bbox_pred, opt);
-
-                    softmax->destroy_pipeline(opt);
-
-                    delete softmax;
-                }
-
-                float pred_ltrb[4];
-                for (int k = 0; k < 4; k++)
-                {
-                    float dis = 0.f;
-                    const float* dis_after_sm = bbox_pred.row(k);
-                    for (int l = 0; l < reg_max_1; l++)
-                    {
-                        dis += l * dis_after_sm[l];
-                    }
-
-                    pred_ltrb[k] = dis * grid_strides[i].stride;
-                }
-
-                float pb_cx = (grid_strides[i].grid0 + 0.5f) * grid_strides[i].stride;
-                float pb_cy = (grid_strides[i].grid1 + 0.5f) * grid_strides[i].stride;
-
-                float x0 = pb_cx - pred_ltrb[0];
-                float y0 = pb_cy - pred_ltrb[1];
-                float x1 = pb_cx + pred_ltrb[2];
-                float y1 = pb_cy + pred_ltrb[3];
-
-                Object obj;
-                obj.rect.x = x0;
-                obj.rect.y = y0;
-                obj.rect.width = x1 - x0;
-                obj.rect.height = y1 - y0;
-                obj.label = label;
-                obj.prob = box_prob;
-                obj.mask_feat.resize(32);
-                std::copy(pred.row(i) + 64 + num_class, pred.row(i) + 64 + num_class + 32, obj.mask_feat.begin());
-                objects.push_back(obj);
+          
+            for (int k = 0; k < top_k && k < class_scores.size(); k++) {
+                obj.labels.push_back(class_scores[k].first);
+                obj.probs.push_back(sigmoid(class_scores[k].second));
             }
+
+            objects.push_back(obj);
+
+            
+            std::cout << "Object detected: Class " << obj.labels[0] << " with probability " << obj.prob << std::endl;
+            for (size_t k = 0; k < top_k && k < class_scores.size(); k++) {
+                std::cout << "Top " << (k + 1) << " Class: " << class_names[class_scores[k].first] << ", Score: " << sigmoid(class_scores[k].second) << std::endl;
+            }
+        }
     }
+
+    softmax->destroy_pipeline(opt);
+    delete softmax;
 }
+
 static void generate_grids_and_stride(const int target_w, const int target_h, std::vector<int>& strides, std::vector<GridAndStride>& grid_strides)
 {
     for (int i = 0; i < (int)strides.size(); i++)
@@ -539,7 +546,7 @@ int detect_yolov8(cv::Mat& bgr, std::vector<Object>& objects)
     int width = bgr.cols;
     int height = bgr.rows;
 
-    const int target_size = 320;
+    const int target_size = 640;
     const float prob_threshold = 0.4f;   //  0.4f
     const float nms_threshold = 0.5f;      //0.5f
 
@@ -782,7 +789,7 @@ static void draw_objects(const cv::Mat& bgr, const std::vector<Object>& objects)
 
 std::vector<int32_t> getCombinedObjectResults(const std::vector<Object>& objects, int img_width, int img_height)
 {
-    std::vector<int> combinedResults;
+    std::vector<int32_t> combinedResults;
 
     for (size_t i = 0; i < objects.size(); ++i)
     {
@@ -790,89 +797,43 @@ std::vector<int32_t> getCombinedObjectResults(const std::vector<Object>& objects
 
         if (i != 0)
         {
-            combinedResults.push_back(static_cast<int>(-1));
+         
+            combinedResults.push_back(-1);
         }
 
-  
+     
         int cx = obj.rect.x;
         int cy = obj.rect.y;
         int bw = obj.rect.width;
         int bh = obj.rect.height;
         double prob = obj.prob;
-        double prob_threshold=roundToThreeDecimalPoints(prob) ;
-        int int_prob = int(1000*prob_threshold) ;
+        double prob_threshold = roundToThreeDecimalPoints(prob);
+        int int_prob = int(1000 * prob_threshold);
 
-    
-        combinedResults.push_back(static_cast<int>(obj.label));
+     
         combinedResults.push_back(cx);
         combinedResults.push_back(cy);
         combinedResults.push_back(bw);
         combinedResults.push_back(bh);
-        combinedResults.push_back(int_prob);
+        //combinedResults.push_back(int_prob);
 
-
-      
-        if (i != objects.size() - 1)
+       
+        for (size_t k = 0; k < obj.labels.size(); ++k)
         {
-            combinedResults.push_back(static_cast<int>(-1));
+            combinedResults.push_back(obj.labels[k]);
+            combinedResults.push_back(static_cast<int>(obj.probs[k] * 1000)); 
         }
     }
 
     return combinedResults;
 }
-
-
-
-
-
-template<typename T>
-T clamp(T val, T minVal, T maxVal) {
-    return (val < minVal) ? minVal : (val > maxVal) ? maxVal : val;
-}
-// Convert YUV420 to RGB image
-void convertYUV420ToImage(int width, int height, const std::vector<uint8_t>& bytes, int bytesPerRow, cv::Mat& rgbaImage) {
-    rgbaImage.create(height, width, CV_8UC4); // Create an image with 4 channels
-    int uvRowStride = bytesPerRow / 2;
-
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            int yIndex = y * bytesPerRow + x;
-            int uvIndex = (y / 2) * uvRowStride + (x / 2);
-            uint8_t Y = bytes[yIndex];
-            uint8_t U = bytes[uvIndex];
-            uint8_t V = bytes[uvIndex + 1];
-
-            int R = clamp(int(Y + (V * 1436 / 1024 - 179)), 0, 255);
-            int G = clamp(int(Y - (U * 46549 / 131072 + 44 - V * 93604 / 131072 + 91)), 0, 255);
-            int B = clamp(int(Y + (U * 1814 / 1024 - 227)), 0, 255);
-            int A = 255;  // Alpha channel set to full opacity
-
-            rgbaImage.at<cv::Vec4b>(y, x) = cv::Vec4b(B, G, R, A);
-        }
-    }
-}
- extern "C" __attribute__((visibility("default"))) __attribute__((used)) void image_ffi_yuv24(unsigned char* buf, int size,int width,int height, int* segBoundary, int* segBoundarySize) {
-    int bytesPerRow = width; // Assuming the row stride equals the width
-    cv::Mat rgbImage;
-    std::vector<uint8_t> bytes(buf, buf + size); // Assuming size is correctly computed for the YUV data
-    convertYUV420ToImage(width, height, bytes, bytesPerRow, rgbImage);
-    std::vector<Object> objects;
-    detect_yolov8(rgbImage, objects);
-    std::vector<int32_t> results = getCombinedObjectResults(objects, rgbImage.cols, rgbImage.rows);
-    size_t resultsSize = results.size()*sizeof(int32_t);
-    if (resultsSize > size) {
-        return;
-    }
-    memcpy(segBoundary, results.data(), resultsSize);
-    *segBoundarySize = results.size() ;
-}
-
-
-
-
 void image_ffi(unsigned char* buf,  int size , int* segBoundary , int* segBoundarySize ) { 
     std::vector<uchar> v(buf, buf + size);
     cv::Mat receivedImage = cv::imdecode(cv::Mat(v), cv::IMREAD_COLOR);
+    // Check if the image is in portrait mode and rotate it to landscape
+    if (receivedImage.rows < receivedImage.cols) {
+        cv::rotate(receivedImage, receivedImage, cv::ROTATE_90_CLOCKWISE);
+    }
      
     std::vector<Object> objects;
     std::vector<uchar> retv;
@@ -909,6 +870,42 @@ void image_ffi_path(char *path, int* objectCnt) {
     std::vector <uchar> retv1;
     imwrite(path, recievedImage);
    
+}
+
+void ConvertBGRA8888toBGR(const cv::Mat& bgraImage, cv::Mat& bgrImage) {
+    if (bgraImage.type() != CV_8UC4) {
+        std::cerr << "Invalid input image format: Expected CV_8UC4 (BGRA8888)" << std::endl;
+        return;
+    }
+    cv::cvtColor(bgraImage, bgrImage, cv::COLOR_BGRA2BGR);
+}
+extern "C" __attribute__((visibility("default"))) __attribute__((used))
+void image_ffi_bgra8888(unsigned char* buf, int size, int width, int height, int* segBoundary, int* segBoundarySize, unsigned char** jpegBuf, int* jpegSize) {
+    // Create an OpenCV mat that references the BGRA8888 data
+    cv::Mat bgraImage(height, width, CV_8UC4, buf);
+    cv::Mat bgrImage;
+    // Convert from BGRA8888 to BGR
+    ConvertBGRA8888toBGR(bgraImage, bgrImage);
+    // Encoding the BGR image to JPEG
+    std::vector<unsigned char> jpegBuffer;
+    cv::imencode(".bmp", bgrImage, jpegBuffer);
+    // Allocate memory for the JPEG buffer to be passed back
+    *jpegBuf = (unsigned char*)malloc(jpegBuffer.size());
+    memcpy(*jpegBuf, jpegBuffer.data(), jpegBuffer.size());
+    *jpegSize = static_cast<int>(jpegBuffer.size());
+
+    std::vector<Object> objects;
+    detect_yolov8(bgrImage, objects);
+    std::vector<int32_t> results = getCombinedObjectResults(objects, bgrImage.cols, bgrImage.rows);
+    size_t resultsSize = results.size() * sizeof(int32_t);
+    // Ensure the output buffer is large enough
+    if (resultsSize > static_cast<size_t>(size)) {
+        *segBoundarySize = 0; // Not enough space to store results
+        return;
+    }
+    // Copy the results to the provided buffer
+    memcpy(segBoundary, results.data(), resultsSize);
+    *segBoundarySize = static_cast<int>(results.size()); // Update the number of elements in the output array
 }
 
 

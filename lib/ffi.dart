@@ -37,7 +37,6 @@ closeModel() {
   logger.e("close Segmentation Model Done");
 }
 
-// process image real time ...
 processImageRealTime(Map<String, dynamic> data) {
   var port = data['send_port'] as SendPort;
   var cameraImage = data['cameraImage'] as CameraImage;
@@ -69,15 +68,15 @@ processImageRealTime(Map<String, dynamic> data) {
       segBoundary,
       segBoundarySize,
     );
-    final image = p.asTypedList(s); // return image ...
-    final result2 =
-        segBoundary.asTypedList(segBoundarySize[0]); // return segBoundary ...
+
+    final rotatedImage = p.asTypedList(s);
+    final result = segBoundary.asTypedList(segBoundarySize[0]);
 
     port.send({
-      "result": result2,
+      "result": result,
       "index": index,
       "isolateTimeStamp": isolateTimeStamp,
-      "image": image
+      "image": rotatedImage,
     });
   } finally {
     malloc.free(p);

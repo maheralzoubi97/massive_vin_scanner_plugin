@@ -156,12 +156,27 @@ static const char* class_names[] = {
 ncnn::Net yolov8;
 
 
+bool isLoaded = false ;
+
+
+bool getIfModelIsLoaded() {
+    return isLoaded;
+}
+
+
+
 void initYolo8(char *modelPath, char *paramPath)
 {
-
-    yolov8.load_param(paramPath);
+     
+   if(getIfModelIsLoaded() ==false){
+     yolov8.load_param(paramPath);
     yolov8.load_model(modelPath);
+    }
+   
     
+
+    
+    isLoaded =true;
 }
 
 void disposeYolo8()
@@ -830,8 +845,9 @@ std::vector<int32_t> getCombinedObjectResults(const std::vector<Object>& objects
 void image_ffi(unsigned char* buf,  int size , int* segBoundary , int* segBoundarySize ) { 
     std::vector<uchar> v(buf, buf + size);
     cv::Mat receivedImage = cv::imdecode(cv::Mat(v), cv::IMREAD_COLOR);
-    // Check if the image is in portrait mode and rotate it to landscape
-    if (receivedImage.rows < receivedImage.cols) {
+    
+
+    if (receivedImage.cols > receivedImage.rows) {
         cv::rotate(receivedImage, receivedImage, cv::ROTATE_90_CLOCKWISE);
     }
      
@@ -841,24 +857,21 @@ void image_ffi(unsigned char* buf,  int size , int* segBoundary , int* segBounda
   
     std::vector<int32_t> results = getCombinedObjectResults(objects, receivedImage.cols, receivedImage.rows);
 
-    size_t resultsSize = results.size()*sizeof(int32_t);
-
-    
+    size_t resultsSize = results.size() * sizeof(int32_t);
 
     if (resultsSize > size) {
         return;
     }
 
     memcpy(segBoundary, results.data(), resultsSize);
+    *segBoundarySize = results.size();
 
     
+    cv::imencode(".jpg", receivedImage, retv);
 
-    *segBoundarySize = results.size() ;
-
-
-
-
+    memcpy(buf, retv.data(), retv.size());
 }
+
 void image_ffi_path(char *path, int* objectCnt) { 
     cv::Mat recievedImage = cv::imread(path);
     Mat temp;

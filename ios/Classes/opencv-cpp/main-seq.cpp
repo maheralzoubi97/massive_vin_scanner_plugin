@@ -894,15 +894,14 @@ void ConvertBGRA8888toBGR(const cv::Mat& bgraImage, cv::Mat& bgrImage) {
 }
 extern "C" __attribute__((visibility("default"))) __attribute__((used))
 void image_ffi_bgra8888(unsigned char* buf, int size, int width, int height, int* segBoundary, int* segBoundarySize, unsigned char** jpegBuf, int* jpegSize) {
-    // Create an OpenCV mat that references the BGRA8888 data
+   
     cv::Mat bgraImage(height, width, CV_8UC4, buf);
     cv::Mat bgrImage;
-    // Convert from BGRA8888 to BGR
+   
     ConvertBGRA8888toBGR(bgraImage, bgrImage);
-    // Encoding the BGR image to JPEG
+    
     std::vector<unsigned char> jpegBuffer;
     cv::imencode(".bmp", bgrImage, jpegBuffer);
-    // Allocate memory for the JPEG buffer to be passed back
     *jpegBuf = (unsigned char*)malloc(jpegBuffer.size());
     memcpy(*jpegBuf, jpegBuffer.data(), jpegBuffer.size());
     *jpegSize = static_cast<int>(jpegBuffer.size());
@@ -911,14 +910,14 @@ void image_ffi_bgra8888(unsigned char* buf, int size, int width, int height, int
     detect_yolov8(bgrImage, objects);
     std::vector<int32_t> results = getCombinedObjectResults(objects, bgrImage.cols, bgrImage.rows);
     size_t resultsSize = results.size() * sizeof(int32_t);
-    // Ensure the output buffer is large enough
+   
     if (resultsSize > static_cast<size_t>(size)) {
-        *segBoundarySize = 0; // Not enough space to store results
+        *segBoundarySize = 0;
         return;
     }
-    // Copy the results to the provided buffer
+   
     memcpy(segBoundary, results.data(), resultsSize);
-    *segBoundarySize = static_cast<int>(results.size()); // Update the number of elements in the output array
+    *segBoundarySize = static_cast<int>(results.size()); 
 }
 
 

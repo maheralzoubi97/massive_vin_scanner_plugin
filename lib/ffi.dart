@@ -1,5 +1,6 @@
 import 'dart:ffi';
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:ffi/ffi.dart';
@@ -43,43 +44,99 @@ processImageRealTime(Map<String, dynamic> data) {
   var index = data['index'];
   var isolateTimeStamp = data['isolateTimeStamp'];
 
-  int s = cameraImage.planes[0].bytes.length;
+  // Get image dimensions
+  int width = cameraImage.width;
+  int height = cameraImage.height;
 
-  final p = malloc.allocate<Uint8>(3 * cameraImage.height * cameraImage.width);
-  p.asTypedList(s).setRange(0, s, cameraImage.planes[0].bytes);
+  // Get YUV420 plane data
+  Uint8List yPlane = cameraImage.planes[0].bytes;
+  Uint8List uPlane = cameraImage.planes[1].bytes;
+  Uint8List vPlane = cameraImage.planes[2].bytes;
 
-  final segBoundary =
-      malloc.allocate<Int32>(cameraImage.planes[0].bytes.length);
+  // Get stride information
+  int uvRowStride = cameraImage.planes[1].bytesPerRow;
+  int uvPixelStride = cameraImage.planes[1].bytesPerPixel ?? 1;
+
+  // Allocate memory for YUV planes
+  final yData = malloc.allocate<Uint8>(yPlane.length);
+  final uData = malloc.allocate<Uint8>(uPlane.length);
+  final vData = malloc.allocate<Uint8>(vPlane.length);
+
+  // Copy YUV data to allocated memory
+  yData.asTypedList(yPlane.length).setRange(0, yPlane.length, yPlane);
+  uData.asTypedList(uPlane.length).setRange(0, uPlane.length, uPlane);
+  vData.asTypedList(vPlane.length).setRange(0, vPlane.length, vPlane);
+
+  // Allocate buffer for output JPEG image (estimate size)
+  int estimatedJpegSize = width * height; // Rough estimate
+  final outputBuffer = malloc.allocate<Uint8>(estimatedJpegSize);
+
+  // Allocate memory for detection results
+  final segBoundary = malloc.allocate<Int32>(1000); // Adjust size as needed
   final segBoundarySize = malloc.allocate<Int32>(1);
 
+  // Define the FFI function signature for YUV420
   final imageffi = dylib.lookupFunction<
-      Void Function(Pointer<Uint8>, Int, Pointer<Int32>, Pointer<Int32>),
+      Void Function(
+        Pointer<Uint8>, // yData
+        Pointer<Uint8>, // uData
+        Pointer<Uint8>, // vData
+        Int, // width
+        Int, // height
+        Int, // uvRowStride
+        Int, // uvPixelStride
+        Pointer<Uint8>, // output buffer
+        Int, // buffer size
+        Pointer<Int32>, // segBoundary
+        Pointer<Int32>, // segBoundarySize
+      ),
       void Function(
-        Pointer<Uint8>,
-        int,
-        Pointer<Int32>,
-        Pointer<Int32>,
+        Pointer<Uint8>, // yData
+        Pointer<Uint8>, // uData
+        Pointer<Uint8>, // vData
+        int, // width
+        int, // height
+        int, // uvRowStride
+        int, // uvPixelStride
+        Pointer<Uint8>, // output buffer
+        int, // buffer size
+        Pointer<Int32>, // segBoundary
+        Pointer<Int32>, // segBoundarySize
       )>('image_ffi');
 
   try {
     imageffi(
-      p,
-      s,
+      yData,
+      uData,
+      vData,
+      width,
+      height,
+      uvRowStride,
+      uvPixelStride,
+      outputBuffer,
+      estimatedJpegSize,
       segBoundary,
       segBoundarySize,
     );
 
-    final rotatedImage = p.asTypedList(s);
+    // Get the processed JPEG image
+    final processedImage = outputBuffer.asTypedList(estimatedJpegSize);
+
+    // Get the detection results
     final result = segBoundary.asTypedList(segBoundarySize[0]);
 
     port.send({
       "result": result,
       "index": index,
       "isolateTimeStamp": isolateTimeStamp,
-      "image": rotatedImage,
+      "image": processedImage,
     });
   } finally {
-    malloc.free(p);
+    // Clean up allocated memory
+    malloc.free(yData);
+    malloc.free(uData);
+    malloc.free(vData);
+    malloc.free(outputBuffer);
     malloc.free(segBoundary);
     malloc.free(segBoundarySize);
   }

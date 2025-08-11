@@ -28,8 +28,6 @@
 #include <opencv2/opencv.hpp>
 #endif
 
-
-
 #include <float.h>
 #include <stdio.h>
 #include <vector>
@@ -43,7 +41,8 @@
 
 #include <cmath> // Include for std::round
 
-double roundToThreeDecimalPoints(double number) {
+double roundToThreeDecimalPoints(double number)
+{
     return std::round(number * 1000.0) / 1000.0;
 }
 
@@ -53,144 +52,135 @@ using namespace cv;
 #include <unordered_map>
 #include <unordered_set>
 
-namespace {
+namespace
+{
 
+    static const int num_class = 34;
 
-static const int num_class = 34;
+    static const char *class_names[] = {
+        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+        "A", "B", "C", "D", "E", "F", "G", "H", "J", "K",
+        "L", "M", "N", "P", "R", "S", "T", "U", "V", "W",
+        "X", "Y", "Z", "vin"};
 
-static const char* class_names[] = {
-    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", 
-    "A", "B", "C", "D", "E", "F", "G", "H", "J", "K", 
-    "L", "M", "N", "P", "R", "S", "T", "U", "V", "W", 
-    "X", "Y", "Z", "vin"
-    };
-
-    
-
- static const unsigned char colors[81][3] = {
-            {56,  0,   255},
-            {226, 255, 0},
-            {0,   94,  255},
-            {0,   37,  255},
-            {0,   255, 94},
-            {255, 226, 0},
-            {0,   18,  255},
-            {255, 151, 0},
-            {170, 0,   255},
-            {0,   255, 56},
-            {255, 0,   75},
-            {0,   75,  255},
-            {0,   255, 169},
-            {255, 0,   207},
-            {75,  255, 0},
-            {207, 0,   255},
-            {37,  0,   255},
-            {0,   207, 255},
-            {94,  0,   255},
-            {0,   255, 113},
-            {255, 18,  0},
-            {255, 0,   56},
-            {18,  0,   255},
-            {0,   255, 226},
-            {170, 255, 0},
-            {255, 0,   245},
-            {151, 255, 0},
-            {132, 255, 0},
-            {75,  0,   255},
-            {151, 0,   255},
-            {0,   151, 255},
-            {132, 0,   255},
-            {0,   255, 245},
-            {255, 132, 0},
-            {226, 0,   255},
-            {255, 37,  0},
-            {207, 255, 0},
-            {0,   255, 207},
-            {94,  255, 0},
-            {0,   226, 255},
-            {56,  255, 0},
-            {255, 94,  0},
-            {255, 113, 0},
-            {0,   132, 255},
-            {255, 0,   132},
-            {255, 170, 0},
-            {255, 0,   188},
-            {113, 255, 0},
-            {245, 0,   255},
-            {113, 0,   255},
-            {255, 188, 0},
-            {0,   113, 255},
-            {255, 0,   0},
-            {0,   56,  255},
-            {255, 0,   113},
-            {0,   255, 188},
-            {255, 0,   94},
-            {255, 0,   18},
-            {18,  255, 0},
-            {0,   255, 132},
-            {0,   188, 255},
-            {0,   245, 255},
-            {0,   169, 255},
-            {37,  255, 0},
-            {255, 0,   151},
-            {188, 0,   255},
-            {0,   255, 37},
-            {0,   255, 0},
-            {255, 0,   170},
-            {255, 0,   37},
-            {255, 75,  0},
-            {0,   0,   255},
-            {255, 207, 0},
-            {255, 0,   226},
-            {255, 245, 0},
-            {188, 255, 0},
-            {0,   255, 18},
-            {0,   255, 75},
-            {0,   255, 151},
-            {255, 56,  0},
-            {245, 255, 0}
-    };
+    static const unsigned char colors[81][3] = {
+        {56, 0, 255},
+        {226, 255, 0},
+        {0, 94, 255},
+        {0, 37, 255},
+        {0, 255, 94},
+        {255, 226, 0},
+        {0, 18, 255},
+        {255, 151, 0},
+        {170, 0, 255},
+        {0, 255, 56},
+        {255, 0, 75},
+        {0, 75, 255},
+        {0, 255, 169},
+        {255, 0, 207},
+        {75, 255, 0},
+        {207, 0, 255},
+        {37, 0, 255},
+        {0, 207, 255},
+        {94, 0, 255},
+        {0, 255, 113},
+        {255, 18, 0},
+        {255, 0, 56},
+        {18, 0, 255},
+        {0, 255, 226},
+        {170, 255, 0},
+        {255, 0, 245},
+        {151, 255, 0},
+        {132, 255, 0},
+        {75, 0, 255},
+        {151, 0, 255},
+        {0, 151, 255},
+        {132, 0, 255},
+        {0, 255, 245},
+        {255, 132, 0},
+        {226, 0, 255},
+        {255, 37, 0},
+        {207, 255, 0},
+        {0, 255, 207},
+        {94, 255, 0},
+        {0, 226, 255},
+        {56, 255, 0},
+        {255, 94, 0},
+        {255, 113, 0},
+        {0, 132, 255},
+        {255, 0, 132},
+        {255, 170, 0},
+        {255, 0, 188},
+        {113, 255, 0},
+        {245, 0, 255},
+        {113, 0, 255},
+        {255, 188, 0},
+        {0, 113, 255},
+        {255, 0, 0},
+        {0, 56, 255},
+        {255, 0, 113},
+        {0, 255, 188},
+        {255, 0, 94},
+        {255, 0, 18},
+        {18, 255, 0},
+        {0, 255, 132},
+        {0, 188, 255},
+        {0, 245, 255},
+        {0, 169, 255},
+        {37, 255, 0},
+        {255, 0, 151},
+        {188, 0, 255},
+        {0, 255, 37},
+        {0, 255, 0},
+        {255, 0, 170},
+        {255, 0, 37},
+        {255, 75, 0},
+        {0, 0, 255},
+        {255, 207, 0},
+        {255, 0, 226},
+        {255, 245, 0},
+        {188, 255, 0},
+        {0, 255, 18},
+        {0, 255, 75},
+        {0, 255, 151},
+        {255, 56, 0},
+        {245, 255, 0}};
 
 }
 
 ncnn::Net yolov8;
 
+bool isLoaded = false;
 
-bool isLoaded = false ;
-
-
-bool getIfModelIsLoaded() {
+bool getIfModelIsLoaded()
+{
     return isLoaded;
 }
 
-
-
 void initYolo8(char *modelPath, char *paramPath)
 {
-     
-   if(getIfModelIsLoaded() ==false){
-     yolov8.load_param(paramPath);
-    yolov8.load_model(modelPath);
-    }
-   
-    
 
-    
-    isLoaded =true;
+    if (getIfModelIsLoaded() == false)
+    {
+        yolov8.load_param(paramPath);
+        yolov8.load_model(modelPath);
+    }
+
+    isLoaded = true;
 }
 
 void disposeYolo8()
 {
     yolov8.clear();
 }
-static void slice(const ncnn::Mat& in, ncnn::Mat& out, int start, int end, int axis)
+static void slice(const ncnn::Mat &in, ncnn::Mat &out, int start, int end, int axis)
 {
     ncnn::Option opt;
     opt.num_threads = 4;
     opt.use_fp16_storage = false;
     opt.use_packing_layout = false;
 
-    ncnn::Layer* op = ncnn::create_layer("Crop");
+    ncnn::Layer *op = ncnn::create_layer("Crop");
 
     ncnn::ParamDict pd;
 
@@ -215,17 +205,15 @@ static void slice(const ncnn::Mat& in, ncnn::Mat& out, int start, int end, int a
     delete op;
 }
 
-
-static void interp(const ncnn::Mat& in, const float& scale, const int& out_w, const int& out_h, ncnn::Mat& out)
+static void interp(const ncnn::Mat &in, const float &scale, const int &out_w, const int &out_h, ncnn::Mat &out)
 {
     ncnn::Option opt;
     opt.num_threads = 4;
     opt.use_fp16_storage = false;
     opt.use_packing_layout = false;
 
-    ncnn::Layer* op = ncnn::create_layer("Interp");
+    ncnn::Layer *op = ncnn::create_layer("Interp");
 
-   
     ncnn::ParamDict pd;
     pd.set(0, 2);
     pd.set(1, scale);
@@ -237,23 +225,21 @@ static void interp(const ncnn::Mat& in, const float& scale, const int& out_w, co
 
     op->create_pipeline(opt);
 
-
     op->forward(in, out, opt);
 
     op->destroy_pipeline(opt);
 
     delete op;
 }
-static void reshape(const ncnn::Mat& in, ncnn::Mat& out, int c, int h, int w, int d)
+static void reshape(const ncnn::Mat &in, ncnn::Mat &out, int c, int h, int w, int d)
 {
     ncnn::Option opt;
     opt.num_threads = 4;
     opt.use_fp16_storage = false;
     opt.use_packing_layout = false;
 
-    ncnn::Layer* op = ncnn::create_layer("Reshape");
+    ncnn::Layer *op = ncnn::create_layer("Reshape");
 
- 
     ncnn::ParamDict pd;
 
     pd.set(0, w);
@@ -270,32 +256,30 @@ static void reshape(const ncnn::Mat& in, ncnn::Mat& out, int c, int h, int w, in
 
     delete op;
 }
-static void sigmoid(ncnn::Mat& bottom)
+static void sigmoid(ncnn::Mat &bottom)
 {
     ncnn::Option opt;
     opt.num_threads = 4;
     opt.use_fp16_storage = false;
     opt.use_packing_layout = false;
 
-    ncnn::Layer* op = ncnn::create_layer("Sigmoid");
+    ncnn::Layer *op = ncnn::create_layer("Sigmoid");
 
     op->create_pipeline(opt);
-
 
     op->forward_inplace(bottom, opt);
     op->destroy_pipeline(opt);
 
     delete op;
 }
-static void matmul(const std::vector<ncnn::Mat>& bottom_blobs, ncnn::Mat& top_blob)
+static void matmul(const std::vector<ncnn::Mat> &bottom_blobs, ncnn::Mat &top_blob)
 {
     ncnn::Option opt;
     opt.num_threads = 2;
     opt.use_fp16_storage = false;
     opt.use_packing_layout = false;
 
-    ncnn::Layer* op = ncnn::create_layer("MatMul");
-
+    ncnn::Layer *op = ncnn::create_layer("MatMul");
 
     ncnn::ParamDict pd;
     pd.set(0, 0);
@@ -329,13 +313,13 @@ struct GridAndStride
     int grid1;
     int stride;
 };
-static inline float intersection_area(const Object& a, const Object& b)
+static inline float intersection_area(const Object &a, const Object &b)
 {
     cv::Rect_<float> inter = a.rect & b.rect;
     return inter.area();
 }
 
-static void qsort_descent_inplace(std::vector<Object>& faceobjects, int left, int right)
+static void qsort_descent_inplace(std::vector<Object> &faceobjects, int left, int right)
 {
     int i = left;
     int j = right;
@@ -351,7 +335,7 @@ static void qsort_descent_inplace(std::vector<Object>& faceobjects, int left, in
 
         if (i <= j)
         {
-            
+
             std::swap(faceobjects[i], faceobjects[j]);
 
             i++;
@@ -359,20 +343,22 @@ static void qsort_descent_inplace(std::vector<Object>& faceobjects, int left, in
         }
     }
 
-    #pragma omp parallel sections
+#pragma omp parallel sections
     {
-        #pragma omp section
+#pragma omp section
         {
-            if (left < j) qsort_descent_inplace(faceobjects, left, j);
+            if (left < j)
+                qsort_descent_inplace(faceobjects, left, j);
         }
-        #pragma omp section
+#pragma omp section
         {
-            if (i < right) qsort_descent_inplace(faceobjects, i, right);
+            if (i < right)
+                qsort_descent_inplace(faceobjects, i, right);
         }
     }
 }
 
-static void qsort_descent_inplace(std::vector<Object>& faceobjects)
+static void qsort_descent_inplace(std::vector<Object> &faceobjects)
 {
     if (faceobjects.empty())
         return;
@@ -380,7 +366,7 @@ static void qsort_descent_inplace(std::vector<Object>& faceobjects)
     qsort_descent_inplace(faceobjects, 0, faceobjects.size() - 1);
 }
 
-static void nms_sorted_bboxes(const std::vector<Object>& faceobjects, std::vector<int>& picked, float nms_threshold)
+static void nms_sorted_bboxes(const std::vector<Object> &faceobjects, std::vector<int> &picked, float nms_threshold)
 {
     picked.clear();
 
@@ -394,14 +380,13 @@ static void nms_sorted_bboxes(const std::vector<Object>& faceobjects, std::vecto
 
     for (int i = 0; i < n; i++)
     {
-        const Object& a = faceobjects[i];
+        const Object &a = faceobjects[i];
 
         int keep = 1;
         for (int j = 0; j < (int)picked.size(); j++)
         {
-            const Object& b = faceobjects[picked[j]];
+            const Object &b = faceobjects[picked[j]];
 
-          
             float inter_area = intersection_area(a, b);
             float union_area = areas[i] + areas[picked[j]] - inter_area;
             if (inter_area / union_area > nms_threshold)
@@ -414,7 +399,8 @@ static void nms_sorted_bboxes(const std::vector<Object>& faceobjects, std::vecto
 }
 inline float fast_exp(float x)
 {
-    union {
+    union
+    {
         uint32_t i;
         float f;
     } v{};
@@ -427,17 +413,17 @@ inline float sigmoid(float x)
     return 1.0f / (1.0f + fast_exp(-x));
 }
 
-
-static void generate_proposals(std::vector<GridAndStride> grid_strides, const ncnn::Mat& pred, float prob_threshold, std::vector<Object>& objects) {
+static void generate_proposals(std::vector<GridAndStride> grid_strides, const ncnn::Mat &pred, float prob_threshold, std::vector<Object> &objects)
+{
     const int num_points = grid_strides.size();
     const int num_class = 34;
     const int reg_max_1 = 16;
-    const int top_k = 5;  
+    const int top_k = 5;
 
-    ncnn::Layer* softmax = ncnn::create_layer("Softmax");
+    ncnn::Layer *softmax = ncnn::create_layer("Softmax");
     ncnn::ParamDict pd;
-    pd.set(0, 1);  
-    pd.set(1, 1); 
+    pd.set(0, 1);
+    pd.set(1, 1);
     softmax->load_param(pd);
 
     ncnn::Option opt;
@@ -446,30 +432,33 @@ static void generate_proposals(std::vector<GridAndStride> grid_strides, const nc
 
     softmax->create_pipeline(opt);
 
-    for (int i = 0; i < num_points; i++) {
-        const float* scores = pred.row(i) + 4 * reg_max_1;
+    for (int i = 0; i < num_points; i++)
+    {
+        const float *scores = pred.row(i) + 4 * reg_max_1;
         std::vector<std::pair<int, float>> class_scores;
 
-        for (int k = 0; k < num_class; k++) {
+        for (int k = 0; k < num_class; k++)
+        {
             float confidence = scores[k];
             class_scores.emplace_back(k, confidence);
         }
 
-        
-        std::sort(class_scores.begin(), class_scores.end(), [](const std::pair<int, float>& a, const std::pair<int, float>& b) {
-            return a.second > b.second;
-        });
+        std::sort(class_scores.begin(), class_scores.end(), [](const std::pair<int, float> &a, const std::pair<int, float> &b)
+                  { return a.second > b.second; });
 
         float box_prob = sigmoid(class_scores[0].second);
-        if (box_prob >= prob_threshold) {
-            ncnn::Mat bbox_pred(reg_max_1, 4, (void*)pred.row(i));
+        if (box_prob >= prob_threshold)
+        {
+            ncnn::Mat bbox_pred(reg_max_1, 4, (void *)pred.row(i));
             softmax->forward_inplace(bbox_pred, opt);
 
             float pred_ltrb[4];
-            for (int k = 0; k < 4; k++) {
+            for (int k = 0; k < 4; k++)
+            {
                 float dis = 0.f;
-                const float* dis_after_sm = bbox_pred.row(k);
-                for (int l = 0; l < reg_max_1; l++) {
+                const float *dis_after_sm = bbox_pred.row(k);
+                for (int l = 0; l < reg_max_1; l++)
+                {
                     dis += l * dis_after_sm[l];
                 }
                 pred_ltrb[k] = dis * grid_strides[i].stride;
@@ -492,17 +481,17 @@ static void generate_proposals(std::vector<GridAndStride> grid_strides, const nc
             obj.mask_feat.resize(32);
             std::copy(pred.row(i) + 64 + num_class, pred.row(i) + 64 + num_class + 32, obj.mask_feat.begin());
 
-          
-            for (int k = 0; k < top_k && k < class_scores.size(); k++) {
+            for (int k = 0; k < top_k && k < class_scores.size(); k++)
+            {
                 obj.labels.push_back(class_scores[k].first);
                 obj.probs.push_back(sigmoid(class_scores[k].second));
             }
 
             objects.push_back(obj);
 
-            
             std::cout << "Object detected: Class " << obj.labels[0] << " with probability " << obj.prob << std::endl;
-            for (size_t k = 0; k < top_k && k < class_scores.size(); k++) {
+            for (size_t k = 0; k < top_k && k < class_scores.size(); k++)
+            {
                 std::cout << "Top " << (k + 1) << " Class: " << class_names[class_scores[k].first] << ", Score: " << sigmoid(class_scores[k].second) << std::endl;
             }
         }
@@ -512,7 +501,7 @@ static void generate_proposals(std::vector<GridAndStride> grid_strides, const nc
     delete softmax;
 }
 
-static void generate_grids_and_stride(const int target_w, const int target_h, std::vector<int>& strides, std::vector<GridAndStride>& grid_strides)
+static void generate_grids_and_stride(const int target_w, const int target_h, std::vector<int> &strides, std::vector<GridAndStride> &grid_strides)
 {
     for (int i = 0; i < (int)strides.size(); i++)
     {
@@ -532,9 +521,9 @@ static void generate_grids_and_stride(const int target_w, const int target_h, st
         }
     }
 }
-static void decode_mask(const ncnn::Mat& mask_feat, const int& img_w, const int& img_h,
-    const ncnn::Mat& mask_proto, const ncnn::Mat& in_pad, const int& wpad, const int& hpad,
-    ncnn::Mat& mask_pred_result)
+static void decode_mask(const ncnn::Mat &mask_feat, const int &img_w, const int &img_h,
+                        const ncnn::Mat &mask_proto, const ncnn::Mat &in_pad, const int &wpad, const int &hpad,
+                        ncnn::Mat &mask_pred_result)
 {
     ncnn::Mat masks;
     matmul(std::vector<ncnn::Mat>{mask_feat, mask_proto}, masks);
@@ -543,31 +532,21 @@ static void decode_mask(const ncnn::Mat& mask_feat, const int& img_w, const int&
     slice(masks, mask_pred_result, (wpad / 2) / 4, (in_pad.w - wpad / 2) / 4, 2);
     slice(mask_pred_result, mask_pred_result, (hpad / 2) / 4, (in_pad.h - hpad / 2) / 4, 1);
     interp(mask_pred_result, 4.0, img_w, img_h, mask_pred_result);
-
 }
 
-
-
-
-int detect_yolov8(cv::Mat& bgr, std::vector<Object>& objects)
+int detect_yolov8(cv::Mat &bgr, std::vector<Object> &objects)
 {
-   
-
-    std::vector<cv::Rect> bounding_boxes;
-
-
-
+    // Clear any existing objects
+    objects.clear();
 
     int width = bgr.cols;
     int height = bgr.rows;
 
     const int target_size = 640;
-    const float prob_threshold = 0.4f;   //  0.4f
-    const float nms_threshold = 0.5f;      //0.5f
+    const float prob_threshold = 0.4f;
+    const float nms_threshold = 0.5f;
 
-
-    
-
+    // Calculate scaling parameters
     int w = width;
     int h = height;
     float scale = 1.f;
@@ -584,200 +563,194 @@ int detect_yolov8(cv::Mat& bgr, std::vector<Object>& objects)
         w = w * scale;
     }
 
+    // Convert and resize image
     ncnn::Mat in = ncnn::Mat::from_pixels_resize(bgr.data, ncnn::Mat::PIXEL_BGR2RGB, width, height, w, h);
 
-
+    // Add padding to make dimensions divisible by 32
     int wpad = (w + 31) / 32 * 32 - w;
     int hpad = (h + 31) / 32 * 32 - h;
     ncnn::Mat in_pad;
     ncnn::copy_make_border(in, in_pad, hpad / 2, hpad - hpad / 2, wpad / 2, wpad - wpad / 2, ncnn::BORDER_CONSTANT, 0.f);
 
-    const float norm_vals[3] = { 1 / 255.f, 1 / 255.f, 1 / 255.f };
+    // Normalize pixel values
+    const float norm_vals[3] = {1 / 255.f, 1 / 255.f, 1 / 255.f};
     in_pad.substract_mean_normalize(0, norm_vals);
 
-
+    // Run inference
     ncnn::Extractor ex = yolov8.create_extractor();
     ex.input("images", in_pad);
 
     ncnn::Mat out;
-    ex.extract("output0", out);
+    if (ex.extract("output0", out) != 0)
+    {
+        std::cerr << "Failed to extract output from YOLO model" << std::endl;
+        return -1;
+    }
 
-  
-    std::vector<int> strides = { 8, 16, 32 };
+    // Generate grid strides for different scales
+    std::vector<int> strides = {8, 16, 32};
     std::vector<GridAndStride> grid_strides;
     generate_grids_and_stride(in_pad.w, in_pad.h, strides, grid_strides);
 
+    // Generate proposals
     std::vector<Object> proposals;
-    std::vector<Object> objects8;
-    generate_proposals(grid_strides, out, prob_threshold, objects8);
-    
-    proposals.insert(proposals.end(), objects8.begin(), objects8.end());
+    generate_proposals(grid_strides, out, prob_threshold, proposals);
 
+    if (proposals.empty())
+    {
+        return 0; // No objects detected
+    }
 
+    // Sort proposals by confidence
     qsort_descent_inplace(proposals);
 
-
+    // Apply Non-Maximum Suppression
     std::vector<int> picked;
     nms_sorted_bboxes(proposals, picked, nms_threshold);
 
     int count = picked.size();
-
-
+    objects.reserve(count); // Pre-allocate memory
     objects.resize(count);
+
+    // Convert coordinates back to original image space
     for (int i = 0; i < count; i++)
     {
         objects[i] = proposals[picked[i]];
 
-
+        // Convert padded coordinates back to original image coordinates
         float x0 = (objects[i].rect.x - (wpad / 2)) / scale;
         float y0 = (objects[i].rect.y - (hpad / 2)) / scale;
         float x1 = (objects[i].rect.x + objects[i].rect.width - (wpad / 2)) / scale;
         float y1 = (objects[i].rect.y + objects[i].rect.height - (hpad / 2)) / scale;
 
-       
+        // Clamp coordinates to image boundaries
         x0 = std::max(std::min(x0, (float)(width - 1)), 0.f);
         y0 = std::max(std::min(y0, (float)(height - 1)), 0.f);
         x1 = std::max(std::min(x1, (float)(width - 1)), 0.f);
         y1 = std::max(std::min(y1, (float)(height - 1)), 0.f);
 
+        // Update object rectangle
         objects[i].rect.x = x0;
         objects[i].rect.y = y0;
         objects[i].rect.width = x1 - x0;
         objects[i].rect.height = y1 - y0;
 
-       
-
-       cv::Rect bbox(x0, y0, x1 - x0, y1 - y0);
-        bounding_boxes.push_back(bbox);
-    }
-
-    // Convert the bounding boxes to a vector of uchar
-    std::vector<uchar> retv;
-
-    for (const cv::Rect& bbox : bounding_boxes)
-    {
-        const uchar* data = reinterpret_cast<const uchar*>(&bbox);
-
-        for (size_t i = 0; i < sizeof(cv::Rect); i++)
+        // Validate bounding box dimensions
+        if (objects[i].rect.width <= 0 || objects[i].rect.height <= 0)
         {
-            retv.push_back(data[i]);
+            std::cerr << "Warning: Invalid bounding box dimensions for object " << i << std::endl;
         }
     }
 
-  
-    return 0;
+    return count; // Return number of detected objects
 }
-
-static void draw_objects(const cv::Mat& bgr, const std::vector<Object>& objects)
+static void draw_objects(const cv::Mat &bgr, const std::vector<Object> &objects)
 {
 
-        char text[256];
-      
+    char text[256];
 
-    static const char* class_names[] = {
-    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", 
-    "A", "B", "C", "D", "E", "F", "G", "H", "J", "K", 
-    "L", "M", "N", "P", "R", "S", "T", "U", "V", "W", 
-    "X", "Y", "Z", "vin"
-};
+    static const char *class_names[] = {
+        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+        "A", "B", "C", "D", "E", "F", "G", "H", "J", "K",
+        "L", "M", "N", "P", "R", "S", "T", "U", "V", "W",
+        "X", "Y", "Z", "vin"};
 
     static const unsigned char colors[81][3] = {
-            {243, 255, 7},
-            {226, 255, 0},
-            {0,   94,  255},
-            {0,   37,  255},
-            {0,   255, 94},
-            {243, 255, 7},
-            {0,   18,  255},
-            {255, 151, 0},
-            {170, 0,   255},
-            {0,   255, 56},
-            {255, 0,   75},
-            {0,   75,  255},
-            {0,   255, 169},
-            {243, 255, 7},
-            {75,  255, 0},
-            {207, 0,   255},
-            {37,  0,   255},
-            {0,   207, 255},
-            {94,  0,   255},
-            {0,   255, 113},
-            {255, 18,  0},
-            {255, 0,   56},
-            {18,  0,   255},
-            {0,   255, 226},
-            {170, 255, 0},
-            {255, 0,   245},
-            {151, 255, 0},
-            {132, 255, 0},
-            {75,  0,   255},
-            {151, 0,   255},
-            {0,   151, 255},
-            {132, 0,   255},
-            {0,   255, 245},
-            {255, 132, 0},
-            {226, 0,   255},
-            {255, 37,  0},
-            {207, 255, 0},
-            {0,   255, 207},
-            {94,  255, 0},
-            {0,   226, 255},
-            {56,  255, 0},
-            {255, 94,  0},
-            {255, 113, 0},
-            {0,   132, 255},
-            {255, 0,   132},
-            {255, 170, 0},
-            {255, 0,   188},
-            {113, 255, 0},
-            {245, 0,   255},
-            {113, 0,   255},
-            {255, 188, 0},
-            {0,   113, 255},
-            {255, 0,   0},
-            {0,   56,  255},
-            {255, 0,   113},
-            {0,   255, 188},
-            {255, 0,   94},
-            {255, 0,   18},
-            {18,  255, 0},
-            {0,   255, 132},
-            {0,   188, 255},
-            {0,   245, 255},
-            {0,   169, 255},
-            {37,  255, 0},
-            {255, 0,   151},
-            {188, 0,   255},
-            {0,   255, 37},
-            {0,   255, 0},
-            {255, 0,   170},
-            {255, 0,   37},
-            {255, 75,  0},
-            {0,   0,   255},
-            {255, 207, 0},
-            {255, 0,   226},
-            {255, 245, 0},
-            {188, 255, 0},
-            {0,   255, 18},
-            {0,   255, 75},
-            {0,   255, 151},
-            {255, 56,  0},
-            {245, 255, 0}
-    };
+        {243, 255, 7},
+        {226, 255, 0},
+        {0, 94, 255},
+        {0, 37, 255},
+        {0, 255, 94},
+        {243, 255, 7},
+        {0, 18, 255},
+        {255, 151, 0},
+        {170, 0, 255},
+        {0, 255, 56},
+        {255, 0, 75},
+        {0, 75, 255},
+        {0, 255, 169},
+        {243, 255, 7},
+        {75, 255, 0},
+        {207, 0, 255},
+        {37, 0, 255},
+        {0, 207, 255},
+        {94, 0, 255},
+        {0, 255, 113},
+        {255, 18, 0},
+        {255, 0, 56},
+        {18, 0, 255},
+        {0, 255, 226},
+        {170, 255, 0},
+        {255, 0, 245},
+        {151, 255, 0},
+        {132, 255, 0},
+        {75, 0, 255},
+        {151, 0, 255},
+        {0, 151, 255},
+        {132, 0, 255},
+        {0, 255, 245},
+        {255, 132, 0},
+        {226, 0, 255},
+        {255, 37, 0},
+        {207, 255, 0},
+        {0, 255, 207},
+        {94, 255, 0},
+        {0, 226, 255},
+        {56, 255, 0},
+        {255, 94, 0},
+        {255, 113, 0},
+        {0, 132, 255},
+        {255, 0, 132},
+        {255, 170, 0},
+        {255, 0, 188},
+        {113, 255, 0},
+        {245, 0, 255},
+        {113, 0, 255},
+        {255, 188, 0},
+        {0, 113, 255},
+        {255, 0, 0},
+        {0, 56, 255},
+        {255, 0, 113},
+        {0, 255, 188},
+        {255, 0, 94},
+        {255, 0, 18},
+        {18, 255, 0},
+        {0, 255, 132},
+        {0, 188, 255},
+        {0, 245, 255},
+        {0, 169, 255},
+        {37, 255, 0},
+        {255, 0, 151},
+        {188, 0, 255},
+        {0, 255, 37},
+        {0, 255, 0},
+        {255, 0, 170},
+        {255, 0, 37},
+        {255, 75, 0},
+        {0, 0, 255},
+        {255, 207, 0},
+        {255, 0, 226},
+        {255, 245, 0},
+        {188, 255, 0},
+        {0, 255, 18},
+        {0, 255, 75},
+        {0, 255, 151},
+        {255, 56, 0},
+        {245, 255, 0}};
     cv::Mat image = bgr;
     int color_index = 0;
-    
+
     for (size_t i = 0; i < objects.size(); i++)
     {
-        const Object& obj = objects[i];
-        const unsigned char* color = colors[color_index % 80];
+        const Object &obj = objects[i];
+        const unsigned char *color = colors[color_index % 80];
         color_index++;
 
         cv::Scalar cc(color[0], color[1], color[2]);
 
         fprintf(stderr, "%d = %.5f at %.2f %.2f %.2f x %.2f\n", obj.label, obj.prob,
                 obj.rect.x, obj.rect.y, obj.rect.width, obj.rect.height);
-        
+
         sprintf(text, "%s %.1f%%", class_names[obj.label], obj.prob * 100);
 
         int baseLine = 0;
@@ -795,28 +768,23 @@ static void draw_objects(const cv::Mat& bgr, const std::vector<Object>& objects)
 
         cv::putText(image, text, cv::Point(x, y + label_size.height),
                     cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0));
-                   
     }
-
-
-    
 }
 
-std::vector<int32_t> getCombinedObjectResults(const std::vector<Object>& objects, int img_width, int img_height)
+std::vector<int32_t> getCombinedObjectResults(const std::vector<Object> &objects, int img_width, int img_height)
 {
     std::vector<int32_t> combinedResults;
 
     for (size_t i = 0; i < objects.size(); ++i)
     {
-        const auto& obj = objects[i];
+        const auto &obj = objects[i];
 
         if (i != 0)
         {
-         
+
             combinedResults.push_back(-1);
         }
 
-     
         int cx = obj.rect.x;
         int cy = obj.rect.y;
         int bw = obj.rect.width;
@@ -825,84 +793,116 @@ std::vector<int32_t> getCombinedObjectResults(const std::vector<Object>& objects
         double prob_threshold = roundToThreeDecimalPoints(prob);
         int int_prob = int(1000 * prob_threshold);
 
-     
         combinedResults.push_back(cx);
         combinedResults.push_back(cy);
         combinedResults.push_back(bw);
         combinedResults.push_back(bh);
-        //combinedResults.push_back(int_prob);
+        // combinedResults.push_back(int_prob);
 
-       
         for (size_t k = 0; k < obj.labels.size(); ++k)
         {
             combinedResults.push_back(obj.labels[k]);
-            combinedResults.push_back(static_cast<int>(obj.probs[k] * 1000)); 
+            combinedResults.push_back(static_cast<int>(obj.probs[k] * 1000));
         }
     }
 
     return combinedResults;
 }
-void image_ffi(unsigned char* buf,  int size , int* segBoundary , int* segBoundarySize ) { 
-    std::vector<uchar> v(buf, buf + size);
-    cv::Mat receivedImage = cv::imdecode(cv::Mat(v), cv::IMREAD_COLOR);
-    
 
-    if (receivedImage.cols > receivedImage.rows) {
-        cv::rotate(receivedImage, receivedImage, cv::ROTATE_90_CLOCKWISE);
+template <typename T>
+T clamp(T val, T minVal, T maxVal)
+{
+    return (val < minVal) ? minVal : (val > maxVal) ? maxVal
+                                                    : val;
+}
+
+void convertYUV420ToRGB(int width, int height, const uint8_t *yData, const uint8_t *uData, const uint8_t *vData, int uvRowStride, int uvPixelStride, cv::Mat &rgbImage)
+{
+    rgbImage.create(height, width, CV_8UC3);
+    for (int y = 0; y < height; y++)
+    {
+        for (int x = 0; x < width; x++)
+        {
+            int uvIndex = uvPixelStride * (x / 2) + uvRowStride * (y / 2);
+            int yIndex = y * width + x;
+
+            int yp = yData[yIndex];
+            int up = uData[uvIndex];
+            int vp = vData[uvIndex];
+
+            int r = std::round(yp + vp * 1436.0 / 1024 - 179);
+            int g = std::round(yp - up * 46549.0 / 131072 + 44 - vp * 93604.0 / 131072 + 91);
+            int b = std::round(yp + up * 1814.0 / 1024 - 227);
+
+            r = clamp(r, 0, 255);
+            g = clamp(g, 0, 255);
+            b = clamp(b, 0, 255);
+
+            rgbImage.at<cv::Vec3b>(y, x) = cv::Vec3b(b, g, r);
+        }
     }
-     
+}
+
+void image_ffi(unsigned char *yData, unsigned char *uData, unsigned char *vData,
+               int width, int height, int uvRowStride, int uvPixelStride,
+               unsigned char *buf, int bufSize,
+               int *segBoundary, int *segBoundarySize)
+{
+
+    cv::Mat rgbImage;
+    convertYUV420ToRGB(width, height, yData, uData, vData, uvRowStride, uvPixelStride, rgbImage);
+
     std::vector<Object> objects;
-    std::vector<uchar> retv;
-    detect_yolov8(receivedImage, objects);
-  
-    std::vector<int32_t> results = getCombinedObjectResults(objects, receivedImage.cols, receivedImage.rows);
+    detect_yolov8(rgbImage, objects);
+
+    std::vector<int32_t> results = getCombinedObjectResults(objects, rgbImage.cols, rgbImage.rows);
 
     size_t resultsSize = results.size() * sizeof(int32_t);
-
-    if (resultsSize > size) {
-        return;
-    }
-
     memcpy(segBoundary, results.data(), resultsSize);
     *segBoundarySize = results.size();
 
-    
-    cv::imencode(".jpg", receivedImage, retv);
+    std::vector<uchar> retv;
+    cv::imencode(".jpg", rgbImage, retv);
 
-    memcpy(buf, retv.data(), retv.size());
+    if (retv.size() <= static_cast<size_t>(bufSize))
+    {
+        memcpy(buf, retv.data(), retv.size());
+    }
 }
 
-void image_ffi_path(char *path, int* objectCnt) { 
+void image_ffi_path(char *path, int *objectCnt)
+{
     cv::Mat recievedImage = cv::imread(path);
     Mat temp;
     std::vector<Object> objects;
-    std::vector <uchar> retv;
+    std::vector<uchar> retv;
     detect_yolov8(recievedImage, objects);
-    *objectCnt =  objects.size();
+    *objectCnt = objects.size();
     draw_objects(recievedImage, objects);
-    std::vector <uchar> retv1;
+    std::vector<uchar> retv1;
     imwrite(path, recievedImage);
-   
 }
 
-void ConvertBGRA8888toBGR(const cv::Mat& bgraImage, cv::Mat& bgrImage) {
-    if (bgraImage.type() != CV_8UC4) {
+void ConvertBGRA8888toBGR(const cv::Mat &bgraImage, cv::Mat &bgrImage)
+{
+    if (bgraImage.type() != CV_8UC4)
+    {
         std::cerr << "Invalid input image format: Expected CV_8UC4 (BGRA8888)" << std::endl;
         return;
     }
     cv::cvtColor(bgraImage, bgrImage, cv::COLOR_BGRA2BGR);
 }
-extern "C" __attribute__((visibility("default"))) __attribute__((used))
-void image_ffi_bgra8888(unsigned char* buf, int size, int width, int height, int* segBoundary, int* segBoundarySize, unsigned char** jpegBuf, int* jpegSize) {
-   
+extern "C" __attribute__((visibility("default"))) __attribute__((used)) void image_ffi_bgra8888(unsigned char *buf, int size, int width, int height, int *segBoundary, int *segBoundarySize, unsigned char **jpegBuf, int *jpegSize)
+{
+
     cv::Mat bgraImage(height, width, CV_8UC4, buf);
     cv::Mat bgrImage;
-   
+
     ConvertBGRA8888toBGR(bgraImage, bgrImage);
-    
+
     std::vector<unsigned char> jpegBuffer;
     cv::imencode(".bmp", bgrImage, jpegBuffer);
-    *jpegBuf = (unsigned char*)malloc(jpegBuffer.size());
+    *jpegBuf = (unsigned char *)malloc(jpegBuffer.size());
     memcpy(*jpegBuf, jpegBuffer.data(), jpegBuffer.size());
     *jpegSize = static_cast<int>(jpegBuffer.size());
 
@@ -910,17 +910,13 @@ void image_ffi_bgra8888(unsigned char* buf, int size, int width, int height, int
     detect_yolov8(bgrImage, objects);
     std::vector<int32_t> results = getCombinedObjectResults(objects, bgrImage.cols, bgrImage.rows);
     size_t resultsSize = results.size() * sizeof(int32_t);
-   
-    if (resultsSize > static_cast<size_t>(size)) {
+
+    if (resultsSize > static_cast<size_t>(size))
+    {
         *segBoundarySize = 0;
         return;
     }
-   
+
     memcpy(segBoundary, results.data(), resultsSize);
-    *segBoundarySize = static_cast<int>(results.size()); 
+    *segBoundarySize = static_cast<int>(results.size());
 }
-
-
-
-
-

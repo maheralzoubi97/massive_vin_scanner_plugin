@@ -848,9 +848,14 @@ void image_ffi(unsigned char *yData, unsigned char *uData, unsigned char *vData,
                unsigned char *buf, int bufSize,
                int *segBoundary, int *segBoundarySize)
 {
-
     cv::Mat rgbImage;
     convertYUV420ToRGB(width, height, yData, uData, vData, uvRowStride, uvPixelStride, rgbImage);
+
+    // Fixed: Use rgbImage instead of receivedImage
+    if (rgbImage.cols > rgbImage.rows)
+    {
+        cv::rotate(rgbImage, rgbImage, cv::ROTATE_90_CLOCKWISE);
+    }
 
     std::vector<Object> objects;
     detect_yolov8(rgbImage, objects);

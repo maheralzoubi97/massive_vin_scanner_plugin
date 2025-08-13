@@ -1,7 +1,7 @@
 import 'dart:ffi';
 import 'dart:isolate';
 import 'dart:typed_data';
-
+import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import 'package:ffi/ffi.dart';
 import 'package:image_picker/image_picker.dart';
@@ -67,41 +67,40 @@ processImageRealTime(Map<String, dynamic> data) {
   uData.asTypedList(uPlane.length).setRange(0, uPlane.length, uPlane);
   vData.asTypedList(vPlane.length).setRange(0, vPlane.length, vPlane);
 
-  // Allocate buffer for output JPEG image (estimate size)
-  int estimatedJpegSize = width * height; // Rough estimate
+  int estimatedJpegSize = width * height;
   final outputBuffer = malloc.allocate<Uint8>(estimatedJpegSize);
 
-  // Allocate memory for detection results
-  final segBoundary = malloc.allocate<Int32>(1000); // Adjust size as needed
-  final segBoundarySize = malloc.allocate<Int32>(1);
+  int segBoundarySize = calculateOptimalBoundarySize(width, height);
 
-  // Define the FFI function signature for YUV420
+  final segBoundary = malloc.allocate<Int32>(segBoundarySize);
+  final segBoundarySizePtr = malloc.allocate<Int32>(1);
+
   final imageffi = dylib.lookupFunction<
       Void Function(
-        Pointer<Uint8>, // yData
-        Pointer<Uint8>, // uData
-        Pointer<Uint8>, // vData
-        Int, // width
-        Int, // height
-        Int, // uvRowStride
-        Int, // uvPixelStride
-        Pointer<Uint8>, // output buffer
-        Int, // buffer size
-        Pointer<Int32>, // segBoundary
-        Pointer<Int32>, // segBoundarySize
+        Pointer<Uint8>,
+        Pointer<Uint8>,
+        Pointer<Uint8>,
+        Int,
+        Int,
+        Int,
+        Int,
+        Pointer<Uint8>,
+        Int,
+        Pointer<Int32>,
+        Pointer<Int32>,
       ),
       void Function(
-        Pointer<Uint8>, // yData
-        Pointer<Uint8>, // uData
-        Pointer<Uint8>, // vData
-        int, // width
-        int, // height
-        int, // uvRowStride
-        int, // uvPixelStride
-        Pointer<Uint8>, // output buffer
-        int, // buffer size
-        Pointer<Int32>, // segBoundary
-        Pointer<Int32>, // segBoundarySize
+        Pointer<Uint8>,
+        Pointer<Uint8>,
+        Pointer<Uint8>,
+        int,
+        int,
+        int,
+        int,
+        Pointer<Uint8>,
+        int,
+        Pointer<Int32>,
+        Pointer<Int32>,
       )>('image_ffi');
 
   try {
@@ -116,14 +115,16 @@ processImageRealTime(Map<String, dynamic> data) {
       outputBuffer,
       estimatedJpegSize,
       segBoundary,
-      segBoundarySize,
+      segBoundarySizePtr,
     );
 
-    // Get the processed JPEG image
+    final actualResultSize = segBoundarySizePtr[0];
+
+    final safeResultSize = math.min(actualResultSize, segBoundarySize);
+
     final processedImage = outputBuffer.asTypedList(estimatedJpegSize);
 
-    // Get the detection results
-    final result = segBoundary.asTypedList(segBoundarySize[0]);
+    final result = segBoundary.asTypedList(safeResultSize);
 
     port.send({
       "result": result,
@@ -131,15 +132,58 @@ processImageRealTime(Map<String, dynamic> data) {
       "isolateTimeStamp": isolateTimeStamp,
       "image": processedImage,
     });
+  } catch (e) {
+    port.send({
+      "error": e.toString(),
+      "index": index,
+      "isolateTimeStamp": isolateTimeStamp,
+      "bufferSize": segBoundarySize,
+    });
   } finally {
-    // Clean up allocated memory
     malloc.free(yData);
     malloc.free(uData);
     malloc.free(vData);
     malloc.free(outputBuffer);
     malloc.free(segBoundary);
-    malloc.free(segBoundarySize);
+    malloc.free(segBoundarySizePtr);
   }
+}
+
+int calculateOptimalBoundarySize(int width, int height) {
+  int pixelBasedEstimate = (width * height) ~/ 20;
+
+  int perimeterBasedEstimate = (width + height) * 4;
+
+  int objectDetectionEstimate = 100 * 4;
+
+  int totalPixels = width * height;
+  int resolutionBasedEstimate;
+
+  if (totalPixels < 100000) {
+    resolutionBasedEstimate = 2000;
+  } else if (totalPixels < 500000) {
+    resolutionBasedEstimate = 5000;
+  } else if (totalPixels < 2000000) {
+    resolutionBasedEstimate = 15000;
+  } else {
+    resolutionBasedEstimate = totalPixels ~/ 100;
+  }
+
+  int baseEstimate = [
+    pixelBasedEstimate,
+    perimeterBasedEstimate,
+    objectDetectionEstimate,
+    resolutionBasedEstimate,
+  ].reduce(math.max);
+
+  int estimateWithMargin = (baseEstimate * 1.5).round();
+
+  int minSize = 1000;
+  int maxSize = totalPixels;
+
+  int finalSize = math.max(minSize, math.min(estimateWithMargin, maxSize));
+
+  return finalSize;
 }
 
 void processImageBgra8888RealTime(Map<String, dynamic> data) {
@@ -158,7 +202,6 @@ void processImageBgra8888RealTime(Map<String, dynamic> data) {
   final jpegBuf = malloc.allocate<Pointer<Uint8>>(1);
   final jpegSize = malloc.allocate<Int32>(1);
 
-  // Lookup the FFI function for BGRA8888 image processing
   final imageFfi = dylib.lookupFunction<
       Void Function(Pointer<Uint8>, Int32, Int32, Int32, Pointer<Int32>,
           Pointer<Int32>, Pointer<Pointer<Uint8>>, Pointer<Int32>),
@@ -185,8 +228,7 @@ void processImageBgra8888RealTime(Map<String, dynamic> data) {
     );
     final imageBytes = jpegBuf.value.asTypedList(jpegSize.value);
 
-    final result2 = segBoundary
-        .asTypedList(segBoundarySize.value); // Return segment boundaries
+    final result2 = segBoundary.asTypedList(segBoundarySize.value);
 
     port.send({
       "result": result2,
